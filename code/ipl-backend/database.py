@@ -100,8 +100,7 @@ def init_db():
         init_db()
     """
     # Import all models here so they're registered with Base
-    #from models import User, Match, Prediction, PredictedXFactor, ActualXFactor
-    from models import XFactorDef
+    from models import User, Match, Prediction, PredictedXFactor, ActualXFactor, XFactorDef
 
     # Create all tables
     Base.metadata.create_all(bind=engine)
@@ -117,6 +116,8 @@ def drop_all_tables():
     print("⚠️ All tables dropped!")
 
 
+
+Base.metadata.create_all(bind=engine)
 # ============================================================================
 # USAGE EXAMPLES
 # ============================================================================

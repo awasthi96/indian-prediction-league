@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-
+from database import init_db
 from routers.auth import router as auth_router
 from routers.users import router as users_router
 from routers.matches import router as matches_router
@@ -9,6 +9,8 @@ from routers.players import router as players_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Indian Prediction League API")
+
+init_db()
 
 app.add_middleware(
     CORSMiddleware,

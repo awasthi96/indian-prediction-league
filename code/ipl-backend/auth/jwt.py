@@ -94,7 +94,6 @@ def get_current_user_id(
     Raises:
         HTTPException: If token is missing, invalid, or expired (401)
     """
-    print("AUTH HEADER:", credentials)
     token = credentials.credentials
     user_id = verify_access_token(token)
     return user_id

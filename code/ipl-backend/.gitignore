@@ -7,6 +7,7 @@ __pycache__/
 # Virtual env
 venv/
 .env
+*.sqlite3
 
 # OS
 .DS_Store
@@ -21,3 +22,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+fake_db.py
+IPL Prediction Adda - Player List.csv
+table_creater.*
+match_result_json.txt
+model_claude.py

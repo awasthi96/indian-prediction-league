@@ -7,6 +7,9 @@ from routers.predictions import router as predictions_router
 from routers.leaderboard import router as leaderboard_router
 from routers.players import router as players_router
 from fastapi.middleware.cors import CORSMiddleware
+from routers.xfactors import router as xfactors_router
+from routers.meta import router as meta_router
+
 
 app = FastAPI(title="Indian Prediction League API")
 
@@ -36,3 +39,5 @@ app.include_router(matches_router, prefix="/matches")
 app.include_router(predictions_router, prefix="/predictions")
 app.include_router(leaderboard_router, prefix="/leaderboard")
 app.include_router(players_router, prefix="/players")
+app.include_router(xfactors_router, prefix="/xfactors")
+app.include_router(meta_router, prefix="/meta")

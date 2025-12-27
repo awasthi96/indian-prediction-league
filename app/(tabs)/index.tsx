@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   SafeAreaView,
   View,
@@ -16,91 +16,72 @@ import {
   Platform,
   Pressable, 
   Alert,
+  BackHandler,
+  KeyboardAvoidingView,
 } from "react-native";
 import { api } from "@/api/api";
 import PlayerDropdown from "@/components/PlayerDropdown";
 import TeamDropdown from "@/components/TeamDropdown";
 import { useLogout } from "@/auth/logout";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "expo-router";
+import { useNavigation, useFocusEffect } from "expo-router";
 
 
 const XF_RISK_OPTIONS = [
-  { id: "LOW", label: "Low risk" },
-  { id: "MEDIUM", label: "Medium risk" },
-  { id: "HIGH", label: "High risk" },
+  { id: "LOW", label: "Low" },
+  { id: "MEDIUM", label: "Medium" },
+  { id: "HIGH", label: "High" },
 ];
 
-// Map risk -> list of conditions (each maps to a backend xf_id)
-const XF_CONDITION_BY_RISK: Record<
-  string,
-  { id: string; label: string; xf_id: string; description: string }[]
-> = {
-  MEDIUM: [
-    {
-      id: "BAT_50",
-      xf_id: "XF_BAT_50_RUNS",
-      label: "Batter scores 50+ runs",
-      description: "Player scores at least 50 runs",
-    },
-    {
-      id: "BOWL_9_DOTS",
-      xf_id: "XF_BOWL_9_DOTS",
-      label: "Bowler bowls 9+ dot balls",
-      description: "At least 9 dot balls in the match",
-    },
-    {
-      id: "FIELD_CATCH",
-      xf_id: "XF_FIELD_CATCH",
-      label: "Player takes a catch",
-      description: "At least 1 catch",
-    },
-    {
-      id: "BAT_SR_180",
-      xf_id: "XF_BAT_SR_180_10B",
-      label: "Strike rate ≥ 180 (10+ balls)",
-      description: "Min 10 balls, SR 180 or more",
-    },
-    {
-      id: "BAT_8_BOUNDARIES",
-      xf_id: "XF_BAT_8_BOUNDARIES",
-      label: "Batter hits 8+ boundaries",
-      description: "Fours + sixes ≥ 8",
-    },
-    {
-      id: "BOWL_3_WICKETS",
-      xf_id: "XF_BOWL_3_WICKETS",
-      label: "Bowler takes 3+ wickets",
-      description: "3 or more wickets",
-    },
-    {
-      id: "BAT_15_RUNS_OVER",
-      xf_id: "XF_BAT_15_RUNS_OVER",
-      label: "15+ runs in an over",
-      description: "Player scores 15+ in any over",
-    },
-    {
-      id: "BOWL_ECON_7",
-      xf_id: "XF_BOWL_7_ECONOMY",
-      label: "Economy ≤ 7",
-      description: "Bowler economy 7 or less",
-    },
-  ],
-  LOW: [
-    {
-      id: "BAT_40",
-      xf_id: "XF_BAT_40_RUNS",
-      label: "Batter scores 40+ runs",
-      description: "Player scores at least 40 runs",
-    },
-    {
-      id: "BOWL_ECON_7",
-      xf_id: "XF_BOWL_7_ECONOMY",
-      label: "Economy ≤ 7",
-      description: "Bowler economy 7 or less",
-    },
-  ],
+type ScoringMeta = {
+  toss_winner: { correct: number };
+  match_winner: { correct: number };
+  top_wicket_taker: { correct: number };
+  top_run_scorer: { correct: number };
+  highest_run_scored: { correct: number };
+  powerplay_runs: { correct: number };
+  total_wickets: { correct: number };
+  x_factor: {
+    LOW: { correct: number; wrong: number };
+    MEDIUM: { correct: number; wrong: number };
+    HIGH: { correct: number; wrong: number };
+  };
 };
+
+const PredictionResultRow = React.memo(({ label, predicted, actual, showActuals}) => (
+  <View style={styles.resultRow}>
+    <View style={styles.resultLeft}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.readonlyValue}>You: {predicted ?? "-"}</Text>
+    </View>
+
+    {showActuals && (
+      <View style={styles.resultRight}>
+        <Text style={styles.readonlyValue}>Result: {actual ?? "-"}</Text>
+      </View>
+    )}
+  </View>
+));
+
+const ReadonlyPredictionRow = React.memo(({ label, value }) => (
+  <View style={styles.resultRow}>
+    <View style={styles.resultLeft}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.readonlyValue}>{value ?? "-"}</Text>
+    </View>
+  </View>
+));
+
+const PredictionField = React.memo(({ label, maxPoints, children }) => (
+  <View style={{ marginBottom: 14 }}>
+    <View style={styles.predictionHeader}>
+      <Text style={styles.predictionLabel}>{label}</Text>
+      <Text style={styles.pointsHint}>Max points: +{maxPoints}</Text>
+    </View>
+    {children}
+  </View>
+));
+
 
 export default function App() {
   const logout = useLogout();
@@ -124,13 +105,6 @@ export default function App() {
   const [predictionMessage, setPredictionMessage] = useState("");
   const [selectedMatch, setSelectedMatch] = useState<any | null>(null);
 
-  const handleSelectMatch = (match: any) => {
-    setSelectedMatch(match);
-    setPredictionLoading(null);
-    setXfModalVisible(false);
-    resetPredictionForm();
-  };
-
   const [players, setPlayers] = useState<string[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
   const [playersError, setPlayersError] = useState("");
@@ -139,13 +113,23 @@ export default function App() {
   const [myPrediction, setMyPrediction] = useState<any | null>(null);
 
   // X-factor list for this prediction
-  const [xFactors, setXFactors] = useState<{ 
-      xf_id: string; 
-      risk: string; 
-      condition_label: string; 
-      player_name: string 
-    }[]
-  >([]);
+  const [xFactors, setXFactors] = useState<any[] >([]);
+  const [xfactorDefs, setXfactorDefs] = useState<any[]>([]);
+  const xfactorsByRisk = useMemo(() => {
+    return xfactorDefs.reduce((acc, xf) => {
+      acc[xf.risk] = acc[xf.risk] || [];
+      acc[xf.risk].push(xf);
+      return acc;
+    }, {} as Record<string, any[]>);
+  }, [xfactorDefs]);
+
+  const xfDefById = useMemo(() => {
+    const map: Record<string, any> = {};
+    xfactorDefs.forEach((xf) => {
+      map[xf.id] = xf;
+    });
+    return map;
+  }, [xfactorDefs]);
 
   // Modal visibility
   const [xfModalVisible, setXfModalVisible] = useState(false);
@@ -153,18 +137,143 @@ export default function App() {
   // Modal draft fields
   const [xfRisk, setXfRisk] = useState<string | null>(null);
   const [xfCondition, setXfCondition] = useState<{
-    xf_id: string;
-    label: string;
+    id: string;
+    category: string;
     description: string;
   } | null>(null);
   const [xfPlayer, setXfPlayer] = useState<string>("");
+  const [warning, setWarning] = useState<string | null>(null);
 
-  // auto load matches
+  const showActuals = selectedMatch?.status === "completed";
+  
+  const [scoringMeta, setScoringMeta] = useState<ScoringMeta | null>(null);
+
+  const actualXFactors = selectedMatch?.actual_x_factors || [];
+
+  const isCompleted = selectedMatch?.status === "completed";
+  const hasPrediction = !!myPrediction;
+
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  const validationTimeoutRef = useRef<NodeJS.Timeout>();
+
+  const validatePredictionDebounced = useCallback((runs: string, wickets: string) => {
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
+    
+    validationTimeoutRef.current = setTimeout(() => {
+      let warnings: string[] = [];
+      const wicketsNum = Number(wickets);
+      const runsNum = Number(runs);
+
+      if (!isNaN(wicketsNum) && wicketsNum > 20) {
+        warnings.push("Wickets greater than 20 is unusual");
+      }
+      if (!isNaN(runsNum) && runsNum > 500) {
+        warnings.push("Runs greater than 500 is unrealistic");
+      }
+
+      setWarning(warnings.length ? warnings.join(" • ") : null);
+    }, 500); // Validate after 500ms of no typing
+  }, []);
+
+  const handleSelectMatch = useCallback((match: any) => {
+    setSelectedMatch(match);
+    setIsEditMode(false);
+    setPredictionLoading(false);
+    setXfModalVisible(false);
+    resetPredictionForm();
+    setWarning("");
+  }, []);
+
+  const resetPredictionForm = () => {
+    setTossWinner("");
+    setMatchWinner("");
+    setTopWicketTaker("");
+    setTopRunScorer("");
+    setHighestRuns("");
+    setPowerplayRuns("");
+    setTotalWickets("");
+    setPredictionMessage("");
+    setXFactors([]);
+    setXfRisk(null);
+    setXfCondition(null);
+    setXfPlayer("");
+    setWarning("");
+  };
+
+  const openXfModal = () => {
+    setXfModalVisible(true);
+    setXfRisk(null);
+    setXfCondition(null);
+    setXfPlayer("");
+    setPredictionMessage("");
+  };
+
+  const closeXfModal = () => {
+    setXfModalVisible(false);
+  };
+
+  const handleAddXfFromModal = useCallback(() => {
+    if (!xfRisk || !xfCondition || !xfPlayer.trim()) {
+      setPredictionMessage("Please select risk, condition and player.");
+      return;
+    }
+
+    setXFactors((prev) => [
+      ...prev,
+      {
+        xf_id: xfCondition.id,
+        risk: xfRisk,
+        condition_label: xfCondition.description,
+        player_name: xfPlayer.trim(),
+      },
+    ]);
+
+    // reset draft + close modal
+    setXfRisk(null);
+    setXfCondition(null);
+    setXfPlayer("");
+    setXfModalVisible(false);
+  }, [xfRisk, xfCondition, xfPlayer]);
+
+  const handleRemoveXFactor = useCallback((index: number) => {
+    setXFactors((prev) => prev.filter((_, i) => i !== index));
+  },[]);
+  
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          if (selectedMatch) {
+            // Go back to matches instead of exiting app
+            setSelectedMatch(null);
+            resetPredictionForm();
+            setPlayersError("");
+            setWarning("");
+            return true; // ⛔ prevent app exit
+          }
+
+          return false; // allow default (exit app)
+        }
+      );
+
+      return () => subscription.remove();
+    }, [selectedMatch, resetPredictionForm])
+  );
+
+  useEffect(() => {
+    api.getXFactors()
+      .then(setXfactorDefs)
+      .catch(console.error);
+  }, []);
+  
   useEffect(() => {
     handleLoadMatches();
   }, []);
 
-  // Fetch players when match loads
   useEffect(() => {
     if (!selectedMatch?.id) return;
 
@@ -183,13 +292,7 @@ export default function App() {
         setPlayersLoading(false);
       });
   }, [selectedMatch?.id]);
-  
-  // log players
-  //useEffect(() => {
-  //  console.log("PLAYERS LOADED:", players);
-  //}, [players]);
 
-  //prediction fetching
   useEffect(() => {
     if (!selectedMatch?.id) return;
 
@@ -212,7 +315,6 @@ export default function App() {
       });
   }, [selectedMatch?.id]);
   
-  //show filled prediction
   useEffect(() => {
     if (!myPrediction) return;
 
@@ -226,9 +328,6 @@ export default function App() {
     setXFactors(myPrediction.x_factors || []);
   }, [myPrediction]);
 
-
-
-  //Log out button
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
@@ -243,15 +342,24 @@ export default function App() {
               ]
             )
           }
-          style={{ marginRight: 16 }}
+          style={styles.logoutButton}
         >
           <Ionicons name="log-out-outline" size={22} color="#e5e7eb" />
         </Pressable>
       ),
     });
+  }, [navigation, logout]);
+
+  useEffect(() => {
+    api.getScoringMeta()
+      .then(data =>{
+        setScoringMeta(data);
+      })
+      .catch(err => {
+        console.error("Failed to load scoring meta", err);
+      });
   }, []);
 
-  // Load upcoming and completed matches
   const handleLoadMatches = async () => {
     setMatchesLoading(true);
     setMatchesError("");
@@ -267,85 +375,23 @@ export default function App() {
     }
   };
 
-  const resetPredictionForm = () => {
-    setTossWinner("");
-    setMatchWinner("");
-    setTopWicketTaker("");
-    setTopRunScorer("");
-    setHighestRuns("");
-    setPowerplayRuns("");
-    setTotalWickets("");
-    setPredictionMessage("");
-    setXFactors([]);
-    setXfRisk(null);
-    setXfCondition(null);
-    setXfPlayer("");
-  };
-
-  const openXfModal = () => {
-    setXfModalVisible(true);
-    setXfRisk(null);
-    setXfCondition(null);
-    setXfPlayer("");
-    setPredictionMessage("");
-  };
-
-  const closeXfModal = () => {
-    setXfModalVisible(false);
-  };
-
-  const handleAddXfFromModal = () => {
-    if (!xfRisk || !xfCondition || !xfPlayer.trim()) {
-      setPredictionMessage("Please select risk, condition and player.");
-      return;
-    }
-
-    setXFactors((prev) => [
-      ...prev,
-      {
-        xf_id: xfCondition.xf_id,
-        risk: xfRisk,
-        condition_label: xfCondition.label,
-        player_name: xfPlayer.trim(),
-      },
-    ]);
-
-    // reset draft + close modal
-    setXfRisk(null);
-    setXfCondition(null);
-    setXfPlayer("");
-    setXfModalVisible(false);
-  };
-
-  const handleRemoveXFactor = (index: number) => {
-    setXFactors((prev) => prev.filter((_, i) => i !== index));
-  };
-
   const handleSubmitPrediction = async () => {
     if (!selectedMatch) return;
 
-    // basic validation
-    if (
-      !tossWinner ||
-      !matchWinner ||
-      !topWicketTaker ||
-      !topRunScorer ||
-      !highestRuns ||
-      !powerplayRuns ||
-      !totalWickets
-    ) {
-      setPredictionMessage("Please fill all fields.");
+    if (!tossWinner || !matchWinner) {
+      setPredictionMessage("Please choose Toss Winner and Match Winner.");
       return;
     }
+
 
     const payload = {
       toss_winner: tossWinner,
       match_winner: matchWinner,
       top_wicket_taker: topWicketTaker,
       top_run_scorer: topRunScorer,
-      highest_run_scored: Number(highestRuns),
-      powerplay_runs: Number(powerplayRuns),
-      total_wickets: Number(totalWickets),
+      highest_run_scored: highestRuns!== "" ? Number(highestRuns) : null,
+      powerplay_runs: powerplayRuns!== "" ? Number(powerplayRuns) : null,
+      total_wickets: totalWickets !== "" ? Number(totalWickets) : null,
       x_factors: xFactors.map((xf) => ({
         xf_id: xf.xf_id,
         player_name: xf.player_name,
@@ -356,9 +402,12 @@ export default function App() {
     setPredictionMessage("");
 
     try {
-      const prediction = await api.submitPrediction(selectedMatch.id, payload);
+      const prediction = isEditMode
+        ? await api.updatePrediction(selectedMatch.id, payload)
+        : await api.submitPrediction(selectedMatch.id, payload);
 
       setMyPrediction(prediction); // store what backend returns
+      setIsEditMode(false);
       setPredictionMessage("Prediction submitted ✅");
     } catch (e: any) {
       const msg =
@@ -374,10 +423,13 @@ export default function App() {
     }
   };
 
+  const canEdit = !isCompleted && hasPrediction;
+  const showForm = !isCompleted && (!hasPrediction || isEditMode);
+
   // ---------- UI RENDERING ----------
 
   // X-Factor modal UI (stays mounted, controlled by state)
-  const renderXfModal = () => (
+  const renderXfModal = useMemo(() => (
     <Modal
       visible={xfModalVisible}
       transparent
@@ -389,7 +441,7 @@ export default function App() {
           <Text style={styles.modalTitle}>X-Factor Prediction</Text>
 
           {/* Risk selection */}
-          <Text style={styles.modalLabel}>1. Risk</Text>
+          <Text style={styles.modalLabel}>1. Risk (+correct/-wrong)</Text>
           <View style={styles.modalChipRow}>
             {XF_RISK_OPTIONS.map((r) => (
               <TouchableOpacity
@@ -410,10 +462,14 @@ export default function App() {
                   ]}
                 >
                   {r.label}
+                  {scoringMeta?.x_factor?.[r.id] && 
+                  ` (+${scoringMeta.x_factor[r.id].correct}/${scoringMeta.x_factor[r.id].wrong})`}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          <View style={styles.modalDivider} />
 
           {/* Condition */}
           <Text style={styles.modalLabel}>2. Condition</Text>
@@ -421,17 +477,17 @@ export default function App() {
             <Text style={styles.modalHint}>Select risk first.</Text>
           ) : (
             <View style={styles.modalChipColumn}>
-              {XF_CONDITION_BY_RISK[xfRisk].map((c) => (
+              {(xfactorsByRisk[xfRisk]||[]).map((c) => (
                 <TouchableOpacity
                   key={c.id}
                   style={[
                     styles.modalChipFull,
-                    xfCondition?.xf_id === c.xf_id && styles.modalChipActive,
+                    xfCondition?.id === c.id && styles.modalChipActive,
                   ]}
                   onPress={() =>
                     setXfCondition({
-                      xf_id: c.xf_id,
-                      label: c.label,
+                      id: c.id,
+                      category: c.category,
                       description: c.description,
                     })
                   }
@@ -439,17 +495,18 @@ export default function App() {
                   <Text
                     style={[
                       styles.modalChipText,
-                      xfCondition?.xf_id === c.xf_id &&
-                        styles.modalChipTextActive,
+                      xfCondition?.id === c.id && styles.modalChipTextActive,
                     ]}
                   >
-                    {c.label}
+                    {c.description}
                   </Text>
-                  <Text style={styles.modalHint}>{c.description}</Text>
+                  <Text style={styles.modalHint}>{c.category}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
+
+          <View style={styles.modalDivider} />
 
           {/* Player */}
           <Text style={styles.modalLabel}>3. Player</Text>
@@ -481,7 +538,10 @@ export default function App() {
               )}
 
               <View style={styles.modalPlayerList}>
-                <ScrollView style={{ maxHeight: 200 }}>
+                <ScrollView 
+                  style={styles.modalPlayerScrollView}
+                  keyboardShouldPersistTaps="handled"
+                >
                   {players.map((p) => (
                     <TouchableOpacity
                       key={p}
@@ -529,249 +589,416 @@ export default function App() {
         </View>
       </View>
     </Modal>
-  );
+  ), [xfModalVisible, xfRisk, xfCondition, xfPlayer, players, playersLoading, playersError, scoringMeta, xfactorsByRisk,closeXfModal, handleAddXfFromModal]);
 
   // If match selected: show match detail + prediction form
   if (selectedMatch) {
     return (
       <SafeAreaView style={styles.container}>
-        {renderXfModal()}
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          <Text style={styles.title}>Match Prediction</Text>
-          <Text style={styles.subtitle}>
-            {selectedMatch.home_team} vs {selectedMatch.away_team}
-          </Text>
-
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Match Info</Text>
-            <Text style={styles.matchInfo}>Venue: {selectedMatch.venue}</Text>
-            <Text style={styles.matchInfo}>
-              Starts at: {new Date(selectedMatch.start_time).toLocaleString()}
+        {renderXfModal}
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.keyboardAvoidingView}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+        >
+          <ScrollView 
+            contentContainerStyle={styles.scrollViewContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.title}>Match Prediction</Text>
+            <Text style={styles.subtitle}>
+              {selectedMatch.home_team} vs {selectedMatch.away_team}
             </Text>
-            <Text style={styles.matchStatus}>
-              Status: {selectedMatch.status}
-            </Text>
-          </View>
 
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Your Prediction</Text>
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Match Info</Text>
+              <Text style={styles.matchInfo}>Venue: {selectedMatch.venue}</Text>
+              <Text style={styles.matchInfo}>
+                Starts at: {new Date(selectedMatch.start_time).toLocaleString()}
+              </Text>
+              <Text style={styles.matchStatus}>
+                Status: {selectedMatch.status}
+              </Text>
+            </View>
+          
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>
+                {isCompleted 
+                  ? "Match Result" 
+                  : hasPrediction && !isEditMode 
+                  ? "Your Prediction (Locked)"
+                  : "Your Prediction"}
+              </Text>
 
-            {predictionLoading ? (
-              <ActivityIndicator />
-            ) : myPrediction ? (
-              <>
-                <Text style={styles.okText}>
-                  You have already submitted a prediction for this match.
-                </Text>
-
-                {/* If match is completed and points exist, show total points */}
-                {selectedMatch.status === "completed" &&
-                  myPrediction.points_earned !== null &&
-                  myPrediction.points_earned !== undefined && (
-                    <Text style={styles.pointsText}>
-                      Total points: {myPrediction.points_earned}
+              {predictionLoading ? (
+                <ActivityIndicator />
+              ) : isCompleted ? (
+                <>
+                  {!hasPrediction && (
+                    <Text style={styles.warningText}>
+                      You did not make a prediction for this match.
                     </Text>
                   )}
 
-                <Text style={styles.label}>Toss winner</Text>
-                <Text style={styles.readonlyValue}>
-                  {myPrediction.toss_winner}
-                </Text>
+                  {hasPrediction && (
+                    <Text style={styles.okText}>
+                      You have already submitted a prediction for this match.
+                    </Text>
+                  )}
+                
 
-                <Text style={styles.label}>Match winner</Text>
-                <Text style={styles.readonlyValue}>
-                  {myPrediction.match_winner}
-                </Text>
-
-                <Text style={styles.label}>Top wicket taker</Text>
-                <Text style={styles.readonlyValue}>
-                  {myPrediction.top_wicket_taker}
-                </Text>
-
-                <Text style={styles.label}>Top run scorer</Text>
-                <Text style={styles.readonlyValue}>
-                  {myPrediction.top_run_scorer}
-                </Text>
-
-                <Text style={styles.label}>Highest team total</Text>
-                <Text style={styles.readonlyValue}>
-                  {myPrediction.highest_run_scored}
-                </Text>
-
-                <Text style={styles.label}>Powerplay runs</Text>
-                <Text style={styles.readonlyValue}>
-                  {myPrediction.powerplay_runs}
-                </Text>
-
-                <Text style={styles.label}>Total wickets</Text>
-                <Text style={styles.readonlyValue}>
-                  {myPrediction.total_wickets}
-                </Text>
-
-                {/* X-Factor results */}
-                {myPrediction.x_factors && myPrediction.x_factors.length > 0 && (
-                  <View style={{ marginTop: 12 }}>
-                    <Text style={styles.sectionTitle}>X-Factors</Text>
-                    {myPrediction.x_factors.map((xf: any, index: number) => (
-                      <Text key={index} style={styles.xfResult}>
-                        {xf.correct === true
-                          ? "✅"
-                          : xf.correct === false
-                          ? "❌"
-                          : "•"}{" "}
-                        {xf.xf_id} – {xf.player_name}
+                  {/* If match is completed and points exist, show total points */}
+                  {isCompleted &&
+                    hasPrediction &&
+                    myPrediction.points_earned !== null &&
+                    myPrediction.points_earned !== undefined && (
+                      <Text style={styles.pointsText}>
+                        Total points: {myPrediction.points_earned}
                       </Text>
-                    ))}
+                    )
+                  }
+              
+                  <PredictionResultRow
+                    label="Toss winner"
+                    predicted={hasPrediction ? myPrediction.toss_winner : "-"}
+                    actual={selectedMatch?.actual_toss_winner ?? "-"}
+                    showActuals={showActuals}
+                  />
+                  <PredictionResultRow
+                    label="Match winner"
+                    predicted={hasPrediction ? myPrediction.match_winner : "-"}
+                    actual={selectedMatch?.actual_match_winner ?? "-"}
+                    showActuals={showActuals}
+                  />
+                  <View style={styles.resultRow}>
+                    <View style={styles.resultLeft}>
+                      <Text style={styles.label}>Top wicket taker</Text>
+                      <Text style={styles.readonlyValue}>
+                        You: {hasPrediction ? myPrediction.top_wicket_taker : "-"}
+                      </Text>
+                    </View>
+                  
+                    {showActuals && (
+                      <View style={styles.resultRight}>
+                        <Text style={styles.label}>Result</Text>
+
+                        {(selectedMatch?.actual_top_wicket_taker || "")
+                          .split(",")
+                          .map((name: string, idx: number) => (
+                            <Text key={idx} style={styles.readonlyValue}>
+                              • {name.trim()}
+                            </Text>
+                          ))}
+                      </View>
+                    )}
                   </View>
-                )}
-              </>
-            ) : (
-              <>
-                {/* PREDICTION FORM */}
 
-                <TeamDropdown
-                  label="Toss winner"
-                  options={[selectedMatch.home_team, selectedMatch.away_team]}
-                  value={tossWinner}
-                  onSelect={setTossWinner}
-                  placeholder="Select team"
-                />
+                  <PredictionResultRow
+                    label="Top run scorer"
+                    predicted={hasPrediction ? myPrediction.top_run_scorer : "-"}
+                    actual={selectedMatch?.actual_top_run_scorer ?? "-"}
+                    showActuals={showActuals}
+                  />
+                  <PredictionResultRow
+                    label="Highest run total"
+                    predicted={hasPrediction ? myPrediction.highest_run_scored : "-"}
+                    actual={selectedMatch?.actual_highest_run_scored ?? "-"}
+                    showActuals={showActuals}
+                  />
+                  <PredictionResultRow
+                    label="Highest powerplay run total"
+                    predicted={hasPrediction ? myPrediction.powerplay_runs : "-"}
+                    actual={selectedMatch?.actual_powerplay_runs ?? "-"}
+                    showActuals={showActuals}
+                  />
+                  <PredictionResultRow
+                    label="Total wickets"
+                    predicted={hasPrediction ? myPrediction.total_wickets : "-"}
+                    actual={selectedMatch?.actual_total_wickets ?? "-"}
+                    showActuals={showActuals}
+                  />
 
-                <TeamDropdown
-                  label="Match winner"
-                  options={[selectedMatch.home_team, selectedMatch.away_team]}
-                  value={matchWinner}
-                  onSelect={setMatchWinner}
-                  placeholder="Select team"
-                />
+                  {/*X-Factors */}
+                  {(myPrediction?.x_factors?.length > 0 ||
+                    (showActuals && actualXFactors.length > 0)) && (
+                    <View style={styles.xfactorContainer}>
+                      <Text style={styles.sectionTitle}>X-Factors</Text>
+                      <View style={styles.xfactorRow}>
+                        <View style={styles.xfactorColumn}>
+                          <Text style={styles.label}>Your X-Factors</Text>
 
-                <PlayerDropdown
-                  label="Top wicket taker"
-                  data={players}
-                  value={topWicketTaker}
-                  onSelect={setTopWicketTaker}
-                  disabled={playersLoading || players.length === 0}
-                />
+                          {myPrediction?.x_factors?.length > 0 ? (
+                            myPrediction.x_factors.map((xf: any, index: number) => {
+                              const def = xfDefById[xf.xf_id];
 
-                <PlayerDropdown
-                  label="Top run scorer"
-                  data={players}
-                  value={topRunScorer}
-                  onSelect={setTopRunScorer}
-                  disabled={playersLoading || players.length === 0}
-                />
-
-                <Text style={styles.label}>Highest team total (runs)</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={highestRuns}
-                  onChangeText={setHighestRuns}
-                  placeholder="e.g. 180"
-                  placeholderTextColor="#6b7280"
-                />
-
-                <Text style={styles.label}>Powerplay runs</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={powerplayRuns}
-                  onChangeText={setPowerplayRuns}
-                  placeholder="e.g. 55"
-                  placeholderTextColor="#6b7280"
-                />
-
-                <Text style={styles.label}>Total wickets in match</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={totalWickets}
-                  onChangeText={setTotalWickets}
-                  placeholder="e.g. 12"
-                  placeholderTextColor="#6b7280"
-                />
-
-                {/* X-Factors */}
-                <View style={{ marginTop: 12, marginBottom: 8 }}>
-                  <TouchableOpacity
-                    onPress={openXfModal}
-                    disabled={selectedMatch.status === "completed"}
-                  >
-                    <Text style={styles.linkText}>+ Add X-Factor</Text>
-                  </TouchableOpacity>
-
-                  {xFactors.length > 0 && (
-                    <View style={{ marginTop: 8 }}>
-                      <Text style={styles.label}>X-Factors added</Text>
-                      {xFactors.map((xf, index) => (
-                        <View key={index} style={styles.xfRow}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.xfTitle}>
-                              [{xf.risk}] {xf.condition_label}
-                            </Text>
-                            <Text style={styles.xfDescription}>
-                              Player: {xf.player_name}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => handleRemoveXFactor(index)}
-                          >
-                            <Text style={styles.xfRemove}>Remove</Text>
-                          </TouchableOpacity>
+                              return (
+                                <Text
+                                  key={index}
+                                  style={styles.xfResult}
+                                  numberOfLines={2}
+                                  ellipsizeMode="tail"
+                                >
+                                  • {xf.player_name || "-"}{" "}
+                                  {def?.description ?? "X-Factor condition"}
+                                </Text>
+                              );
+                            })
+                          ) : (
+                            <Text style={styles.emptyText}>No X-Factors predicted</Text>
+                          )}
                         </View>
-                      ))}
+                        <View style={styles.xfactorColumn}>
+                          <Text style={styles.label}>Match X-Factors</Text>
+                        
+                          {showActuals && actualXFactors.length > 0 ? (
+                            actualXFactors.map((xf: any, index: number) => {
+                              const def = xfDefById[xf.xf_id];
+
+                              return (
+                                <Text
+                                  key={index}
+                                  style={styles.xfResult}
+                                  numberOfLines={2}
+                                  ellipsizeMode="tail"
+                                >
+                                  • {xf.player_name || "-"}{" "}
+                                    {def?.result_description ??
+                                    def?.description ??
+                                    "X-Factor impact"}
+                                </Text>
+                              );
+                            })
+                          ) : (
+                            <Text style={styles.emptyText}>Results not available</Text>
+                          )}
+                        </View>
+                      </View>
                     </View>
                   )}
-                </View>
-
-                {playersLoading && (
-                  <ActivityIndicator
-                    color="#60a5fa"
-                    style={{ marginVertical: 8 }}
-                  />
-                )}
-
-                {!playersLoading && players.length === 0 && (
-                  <Text style={{ color: "#aaa", fontSize: 12 }}>
-                    Players not available for this match
+                </>
+              ) : hasPrediction && !isEditMode ? (
+                //Upcoming + Already Predicted -> Read-Only View
+                <>
+                  <Text style={styles.okText}>
+                    You have already submitted a prediction for this match.
                   </Text>
-                )}
-
-                {predictionLoading ? (
-                  <ActivityIndicator />
-                ) : (
-                  <Button
-                    title="Submit prediction"
-                    onPress={handleSubmitPrediction}
-                  />
-                )}
-
-                {predictionMessage ? (
-                  <Text
-                    style={
-                      predictionMessage.includes("✅")
-                        ? styles.okText
-                        : styles.errorText
-                    }
+                  {/* READ-ONLY SUMMARY */}
+                    <ReadonlyPredictionRow label="Toss winner" value={myPrediction.toss_winner} />
+                    <ReadonlyPredictionRow label="Match winner" value={myPrediction.match_winner} />
+                    <ReadonlyPredictionRow label="Top wicket taker" value={myPrediction.top_wicket_taker} />
+                    <ReadonlyPredictionRow label="Top run scorer" value={myPrediction.top_run_scorer} />
+                    <ReadonlyPredictionRow label="Highest team total" value={myPrediction.highest_run_scored}/>
+                    <ReadonlyPredictionRow label="Powerplay runs" value={myPrediction.powerplay_runs} />
+                    <ReadonlyPredictionRow label="Total wickets" value={myPrediction.total_wickets} />
+                  
+                    {/* READ-ONLY X-FACTORS (single column, concise) */}
+                    {myPrediction?.x_factors?.length > 0 && (
+                      <View style={styles.xfactorReadonlyContainer}>
+                        <Text style={styles.label}>X-Factors</Text>
+                        {myPrediction.x_factors.map((xf, idx) => {
+                          const def = xfDefById[xf.xf_id];
+                          return (
+                            <Text key={idx} style={styles.xfResult} numberOfLines={2}>
+                              • {xf.player_name} {def?.description ?? ""}
+                            </Text>
+                          );
+                        })}
+                      </View>
+                    )}
+                  
+                    <View style={styles.editButtonContainer}>
+                      <Button title="Edit prediction" onPress={() => setIsEditMode(true)} />
+                    </View>
+                </>
+              ) : showForm ? (
+                <>                
+                  {/* PREDICTION FORM */}
+                  <PredictionField
+                    label="Toss winner"
+                    maxPoints={scoringMeta?.toss_winner?.correct}
                   >
-                    {String(predictionMessage)}
-                  </Text>
-                ) : null}
-              </>
-            )}
-          </View>
+                    <TeamDropdown
+                      options={[selectedMatch.home_team, selectedMatch.away_team]}
+                      value={tossWinner}
+                      onSelect={setTossWinner}
+                      placeholder="Select team"
+                    />
+                  </PredictionField>
 
-          <View style={styles.card}>
-            <Button
-              title="Back to matches"
-              onPress={() => {
-                setSelectedMatch(null);
-                resetPredictionForm();
-                setPlayersError("");
-              }}
-            />
-          </View>
-        </ScrollView>
+                  <PredictionField
+                    label="Match winner"
+                    maxPoints={scoringMeta?.match_winner?.correct}
+                  >
+                    <TeamDropdown
+                      options={[selectedMatch.home_team, selectedMatch.away_team]}
+                      value={matchWinner}
+                      onSelect={setMatchWinner}
+                      placeholder="Select team"
+                    />
+                  </PredictionField>
+
+                  <PredictionField
+                    label="Top wicket taker"
+                    maxPoints={scoringMeta?.top_wicket_taker?.correct}
+                  >
+                    <PlayerDropdown
+                      data={players}
+                      value={topWicketTaker}
+                      onSelect={setTopWicketTaker}
+                      disabled={playersLoading || players.length === 0}
+                    />
+                  </PredictionField>
+
+                  <PredictionField
+                    label="Top run scorer"
+                    maxPoints={scoringMeta?.top_run_scorer?.correct}
+                  >
+                    <PlayerDropdown
+                      data={players}
+                      value={topRunScorer}
+                      onSelect={setTopRunScorer}
+                      disabled={playersLoading || players.length === 0}
+                    />
+                  </PredictionField>
+
+                  <PredictionField
+                    label="Highest team total (runs)"
+                    maxPoints={scoringMeta?.highest_run_scored?.correct}
+                  >
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={highestRuns}
+                      onChangeText={(v) => {
+                        if (/^\d*$/.test(v)) {
+                          setHighestRuns(v);
+                          validatePredictionDebounced(v, totalWickets);
+                        }
+                      }}
+                      placeholder="e.g. 180"
+                      placeholderTextColor="#6b7280"
+                    />
+                  </PredictionField>
+
+                  <PredictionField
+                    label="Highest powerplay total"
+                    maxPoints={scoringMeta?.powerplay_runs?.correct}
+                  >
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={powerplayRuns}
+                      onChangeText={(v) => {
+                        if (/^\d*$/.test(v)) setPowerplayRuns(v);
+                      }}
+                      placeholder="e.g. 55"
+                      placeholderTextColor="#6b7280"
+                    />
+                  </PredictionField>
+
+                  <PredictionField
+                    label="Total fall of wickets in match"
+                    maxPoints={scoringMeta?.total_wickets?.correct}
+                  >
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={totalWickets}
+                      onChangeText={(v) => {
+                        if (/^\d*$/.test(v)) {
+                          setTotalWickets(v);
+                          validatePredictionDebounced(highestRuns, v);
+                        } 
+                      }}
+                      placeholder="e.g. 12"
+                      placeholderTextColor="#6b7280"
+                    />
+                  </PredictionField>                                    
+                
+
+                  {/* X-Factors */}
+                  <View style={styles.xfactorAddContainer}>
+                    <TouchableOpacity
+                      onPress={openXfModal}
+                      disabled={isCompleted || (hasPrediction && !isEditMode)}
+                    >
+                      <Text style={styles.linkText}>+ Add X-Factor</Text>
+                    </TouchableOpacity>
+
+                    {xFactors.length > 0 && (
+                      <View style={styles.xfactorListContainer}>
+                        <Text style={styles.label}>X-Factors added</Text>
+                        {xFactors.map((xf, index) => (
+                          <View key={index} style={styles.xfRow}>
+                            <View style={styles.xfRowContent}>
+                              <Text style={styles.xfTitle}>
+                                {xf.player_name} {xfDefById[xf.xf_id].description}
+                              </Text>
+                              <Text style={styles.xfDescription}>
+                                Risk: {xfDefById[xf.xf_id].risk}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              onPress={() => handleRemoveXFactor(index)}
+                            >
+                              <Text style={styles.xfRemove}>Remove</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+
+                  {playersLoading && (
+                    <ActivityIndicator
+                      color="#60a5fa"
+                      style={styles.loadingIndicator}
+                    />
+                  )}
+
+                  {!playersLoading && players.length === 0 && (
+                    <Text style={styles.noPlayersText}>
+                      Players not available for this match
+                    </Text>
+                  )}
+                  <View style={styles.warningContainer}>    
+                    {warning && (
+                      <Text style={styles.warningText}>⚠️ {warning}</Text>
+                    )}
+                  </View>
+
+                  {predictionLoading ? (
+                    <ActivityIndicator />
+                  ) : (
+                    <Button
+                      title="Submit prediction"
+                      onPress={handleSubmitPrediction}
+                    />
+                  )}
+                  <View style={styles.messageContainer}>
+                    {predictionMessage ? (
+                      <Text style={predictionMessage.includes("✅") ? styles.okText : styles.errorText}>
+                        {String(predictionMessage)}
+                      </Text>
+                    ):null}
+                  </View>
+                </>
+              ) : null}
+            </View>
+
+            <View style={styles.card}>
+              <Button
+                title="Back to matches"
+                onPress={() => {
+                  setSelectedMatch(null);
+                  resetPredictionForm();
+                  setPlayersError("");
+                  setWarning("");
+                }}
+              />
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -841,6 +1068,7 @@ export default function App() {
         <FlatList
           data={activeTab === "upcoming" ? upcomingMatches : completedMatches}
           keyExtractor={(item) => item.id.toString()}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             !matchesLoading ? (
               <Text style={styles.emptyText}>
@@ -867,7 +1095,7 @@ export default function App() {
               <Text style={styles.tapHint}>
                 {activeTab === "upcoming"
                   ? "Tap to predict"
-                  : "Tap to view your points"}
+                  : "Tap to view result"}
               </Text>
             </TouchableOpacity>
           )}
@@ -987,6 +1215,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#111827",
   },
+  xfRowContent:{
+    flex: 1,
+  },
   xfTitle: {
     fontSize: 13,
     color: "#e5e7eb",
@@ -999,28 +1230,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#e5e7eb",
     marginTop: 4,
+    fontWeight: 400,
   },
   xfRemove: {
     fontSize: 12,
     color: "#fca5a5",
     marginLeft: 8,
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(2,6,23,0.85)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 16,
   },
   modalCard: {
-    backgroundColor: "#020617",
-    borderRadius: 16,
+    backgroundColor: "#111827",
+    borderRadius: 12,
     padding: 16,
     width: "100%",
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#e5e7eb",
     marginBottom: 8,
@@ -1050,7 +1281,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#4b5563",
     marginRight: 8,
-    backgroundColor: "#020617",
+    backgroundColor: "#111827",
   },
   modalChipFull: {
     paddingHorizontal: 10,
@@ -1058,7 +1289,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "#4b5563",
-    backgroundColor: "#020617",
+    backgroundColor: "#111827",
     marginBottom: 6,
   },
   modalChipActive: {
@@ -1074,7 +1305,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   modalInput: {
-    backgroundColor: "#020617",
+    backgroundColor: "#111827",
     color: "#e5e7eb",
     borderRadius: 8,
     borderWidth: 1,
@@ -1116,9 +1347,17 @@ const styles = StyleSheet.create({
   modalPlayerList: {
     marginTop: 4,
   },
-  segmentContainer: {
+  modalPlayerScrollView: {
+    maxHeight: 200,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: "#374151",
+    marginVertical: 8,
+  },
+    segmentContainer: {
     flexDirection: "row",
-    backgroundColor: "#020617",
+    backgroundColor: "#111827",
     borderRadius: 999,
     padding: 4,
     marginBottom: 12,
@@ -1141,9 +1380,88 @@ const styles = StyleSheet.create({
     color: "#f9fafb",
   },
   topRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  warningText: {
+    color: "#fbbf24",
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  resultRow: {
+    flexDirection: "row",
+    marginBottom: 10,
+  },
+  resultLeft: {
+    flex: 1,
+  },
+  resultRight: {
+    flex: 1,
+    alignItems: "flex-end",
+    justifyContent: "flex-end",
+  },
+  pointsHint: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  predictionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  predictionLabel: {
+    fontSize: 13,
+    color: "#cbd5e1",
+    fontWeight: "500",
+  },
+  predictionFieldContainer: {
+    marginBottom: 14,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 24,
+  },
+  logoutButton: {
+    marginRight: 16,
+  },
+  xfactorContainer: {
+    marginTop: 12,
+  },
+  xfactorRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  xfactorColumn: {
+    flex: 1,
+  },
+  xfactorReadonlyContainer: {
+    marginTop: 8,
+  },
+  editButtonContainer: {
+    marginTop: 8,
+  },
+  xfactorAddContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  xfactorListContainer: {
+    marginTop: 8,
+  },
+  loadingIndicator: {
+    marginVertical: 8,
+  },
+  noPlayersText: {
+    color: "#aaa",
+    fontSize: 12,
+  },
+  warningContainer: {
+    minHeight: 20,
+  },
+  messageContainer: {
+    minHeight: 20,
   },
 });

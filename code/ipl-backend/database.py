@@ -12,7 +12,7 @@ import os
 # ============================================================================
 
 # Option 1: Try to get DATABASE_URL from environment variable (for deployment)
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = "postgresql://postgres:rsQlVrnEaGcEEwyKpFqUNtqOTejywiiQ@switchback.proxy.rlwy.net:34063/railway"
 
 # Option 2: If no environment variable, use local PostgreSQL
 if not DATABASE_URL:

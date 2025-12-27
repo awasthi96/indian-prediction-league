@@ -3,8 +3,10 @@
 # dependencies
 node_modules/
 
-# Expo
+# Expo / EAS
 .expo/
+.expo-shared/
+credentials.jsons
 dist/
 web-build/
 expo-env.d.ts
@@ -41,3 +43,23 @@ app-example
 # generated native folders
 /ios
 /android
+
+
+# Environment variables (ALL)
+.env
+.env.*
+.env.production
+.env.development
+
+# OS / IDE
+.vscode/
+.idea/
+
+# Build artifacts
+*.apk
+*.aab
+
+# Python (backend safety, if mono-repo or accidental commits)
+__pycache__/
+*.pyc
+.venv/

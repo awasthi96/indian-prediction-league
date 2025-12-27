@@ -13,7 +13,7 @@ if not SECRET_KEY:
     raise ValueError("JWT_SECRET environment variable is not set")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_DAYS = 7
+ACCESS_TOKEN_EXPIRE_DAYS = 0.5
 
 # Security scheme for dependency injection
 security = HTTPBearer()

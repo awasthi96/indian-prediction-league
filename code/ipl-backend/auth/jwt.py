@@ -13,7 +13,7 @@ if not SECRET_KEY:
     raise ValueError("JWT_SECRET environment variable is not set")
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_DAYS = 7
+ACCESS_TOKEN_EXPIRE_DAYS = 0.5
 
 # Security scheme for dependency injection
 security = HTTPBearer()
@@ -94,7 +94,6 @@ def get_current_user_id(
     Raises:
         HTTPException: If token is missing, invalid, or expired (401)
     """
-    print("AUTH HEADER:", credentials)
     token = credentials.credentials
     user_id = verify_access_token(token)
     return user_id

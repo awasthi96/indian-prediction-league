@@ -27,6 +27,14 @@ class XFactorHit(BaseModel):
     player_name: str
 
 
+class ActualXFactorResponse(BaseModel):
+    xf_id: str
+    player_name: str
+
+    class Config:
+        from_attributes = True
+
+
 class MatchResultUpdate(BaseModel):
     toss_winner: str
     match_winner: str
@@ -53,6 +61,7 @@ class MatchResponse(BaseModel):
     actual_highest_run_scored: Optional[int] = None
     actual_powerplay_runs: Optional[int] = None
     actual_total_wickets: Optional[int] = None
+    actual_x_factors: List[ActualXFactorResponse] = []
 
     class Config:
         from_attributes = True
@@ -137,18 +146,29 @@ def admin_set_match_result(
 
 @router.get("/matches", response_model=List[MatchResponse])
 def list_matches(status: Optional[str] = None, db: Session = Depends(get_db)):
-    """
-    Public list:
-    - /matches                -> all matches
-    - /matches?status=upcoming   -> only upcoming
-    - /matches?status=completed  -> only completed
-    """
     query = db.query(Match)
     
     if status:
         query = query.filter(Match.status == status)
     
     matches = query.all()
+
+    match_ids = [m.id for m in matches]
+
+    actual_xfs =(
+        db.query(ActualXFactor)
+        .filter(ActualXFactor.match_id.in_(match_ids))
+        .all()
+    )
+
+    xfs_by_match = {}
+
+    for xf in actual_xfs:
+        xfs_by_match.setdefault(xf.match_id,[]).append(xf)
+
+    for m in matches:
+        m.actual_x_factors = xfs_by_match.get(m.id, [])
+    
     return matches
 
 
@@ -157,6 +177,13 @@ def get_match(match_id: int, db: Session = Depends(get_db)):
     match = db.query(Match).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+
+    actual_xfs =(
+        db.query(ActualXFactor)
+        .filter(ActualXFactor.match_id == match_id)
+        .all()
+    )
+    match.actual_x_factors = actual_xfs
     return match
 
 

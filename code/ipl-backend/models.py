@@ -188,6 +188,10 @@ class ActualXFactor(Base):
     def __repr__(self):
         return f"<ActualXFactor(id={self.id}, match_id={self.match_id}, xf_id='{self.xf_id}', player='{self.player_name}')>"
 
+
+# ============================================================================
+# MODEL 6: XFactorDefinition
+# ============================================================================
 class XFactorDef(Base):
     """
     Stores predefined X-Factors created by admin
@@ -201,6 +205,8 @@ class XFactorDef(Base):
     risk = Column(String(50),nullable=False) # "LOW" | "MEDIUM" | "HARD"
     category = Column(String(50),nullable=False) # "batting" | "bowling" | "fielding"
     description = Column(String(100), nullable=False)  # e.g. "Strike rate >= 180 (min 10 balls)"
+    status = Column(Boolean, nullable=False, default=True) # e.g. true or false
+    result_description = Column(String(100), nullable=True) # e.g. display string in past-tense for result screen 
 
     def __repr__(self):
         return f"<XFactorDef(serial={self.serial}, id={self.id}, risk='{self.risk}', description='{self.description}')>"

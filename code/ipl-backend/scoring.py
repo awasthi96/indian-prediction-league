@@ -8,8 +8,8 @@ from xfactor_master import XFACTOR_DEFS
 
 POINTS_TOSS_WINNER_CORRECT = 2
 POINTS_MATCH_WINNER_CORRECT = 5
-POINTS_TOP_RUN_SCORER_CORRECT = 5
-POINTS_TOP_WICKET_TAKER_CORRECT = 5
+POINTS_TOP_RUN_SCORER_CORRECT = 4
+POINTS_TOP_WICKET_TAKER_CORRECT = 4
 
 
 # X-factor risk-based points: (correct_points, wrong_points)
@@ -17,6 +17,22 @@ XFACTOR_RISK_POINTS = {
     "LOW": (3, -1),
     "MEDIUM": (5, -3),
     "HARD": (10, -7),
+}
+
+
+SCORING_META = {
+    "toss_winner": {"correct": 2},
+    "match_winner": {"correct": 5},
+    "top_wicket_taker": {"correct": 4},
+    "top_run_scorer": {"correct": 4},
+    "highest_run_scored": {"correct": 5},
+    "powerplay_runs": {"correct": 3},
+    "total_wickets": {"correct": 3},
+    "x_factor": {
+        "LOW": {"correct": 3, "wrong": -1},
+        "MEDIUM": {"correct": 5, "wrong": -3},
+        "HIGH": {"correct": 10, "wrong": -7},
+    },
 }
 
 
@@ -87,11 +103,11 @@ def score_prediction_for_match(
     # Powerplay runs
     if match.actual_powerplay_runs is not None:
         diff = abs(match.actual_powerplay_runs - prediction.powerplay_runs)
-        if diff == 0:
+        if diff <= 1:
             points += 3
-        elif diff <= 1:
-            points += 2
         elif diff <= 2:
+            points += 2
+        elif diff <= 4:
             points += 1
         # else: +0
 

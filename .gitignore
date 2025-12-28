@@ -63,3 +63,6 @@ app-example
 __pycache__/
 *.pyc
 .venv/
+
+code/ipl-backend/auth/__pycache__/
+code/ipl-backend/routers/__pycache__/

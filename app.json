@@ -50,7 +50,6 @@
     "extra": {
       "router": {},
       "env": "prod",
-      "devApiUrl": "http://192.168.1.20:8000",
       "eas": {
         "projectId": "917b0682-891b-400a-807a-227fe656960c"
       }

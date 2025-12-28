@@ -1130,6 +1130,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
+    flex: 1,
   },
   sectionTitle: {
     fontSize: 16,

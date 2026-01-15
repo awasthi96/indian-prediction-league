@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/(.*)", "dest": "code/ipl-backend/main.py" }
+  ]
+}

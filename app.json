@@ -2,7 +2,7 @@
   "expo": {
     "name": "Indian Prediction League",
     "slug": "indian-prediction-league",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "indian-prediction-league",
@@ -41,7 +41,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

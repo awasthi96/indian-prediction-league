@@ -7,7 +7,7 @@ from datetime import datetime
 from models import Match, Prediction, ActualXFactor
 from database import get_db
 from scoring import apply_scoring_for_match
-from data_loader import get_players_for_match
+from data_loader import get_match_players_grouped
 
 router = APIRouter(
     tags=["matches"],
@@ -187,16 +187,16 @@ def get_match(match_id: int, db: Session = Depends(get_db)):
     return match
 
 
-@router.get("/{match_id}/players", response_model=List[str])
+@router.get("/{match_id}/players", response_model=List[dict]) 
 def get_match_players(match_id: int, db: Session = Depends(get_db)):
-    match = db.query(Match).filter(Match.id == match_id).first()
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-
-    players = get_players_for_match(match.home_team, match.away_team)
-    if not players:
-        raise HTTPException(status_code=404, detail="Players not found for this match")
-    return players
+    # We pass the DB session directly to the loader now
+    players_sections = get_match_players_grouped(db, match_id)
+    
+    if not players_sections:
+        # Fallback for old V1 matches or errors (return empty list)
+        return []
+        
+    return players_sections
 
 
 @router.get("/", response_model=List[dict])

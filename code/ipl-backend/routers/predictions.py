@@ -28,11 +28,11 @@ class PredictedXFactorResponse(BaseModel):
 class PredictionCreate(BaseModel):
     toss_winner: str
     match_winner: str
-    top_wicket_taker: str
-    top_run_scorer: str
-    highest_run_scored: int
-    powerplay_runs: int
-    total_wickets: int
+    top_wicket_taker: Optional[str] = None
+    top_run_scorer: Optional[str] = None
+    highest_run_scored: Optional[int] = None
+    powerplay_runs: Optional[int] = None
+    total_wickets: Optional[int] = None
     x_factors: List[XFactorPrediction]
 
 
@@ -42,11 +42,11 @@ class PredictionResponse(BaseModel):
     user_id: int
     toss_winner: str
     match_winner: str
-    top_wicket_taker: str
-    top_run_scorer: str
-    highest_run_scored: int
-    powerplay_runs: int
-    total_wickets: int
+    top_wicket_taker: Optional[str] = None
+    top_run_scorer: Optional[str] = None
+    highest_run_scored: Optional[int] = None
+    powerplay_runs: Optional[int] = None
+    total_wickets: Optional[int] = None
     points_earned: Optional[int] = None
     x_factors: List[PredictedXFactorResponse]
 

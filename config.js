@@ -6,8 +6,8 @@ export const APP_ENV =
 
 const API_MAP = {
   local: "http://192.168.1.6:8000",
-  staging: "https://indian-prediction-league.vercel.app/",
-  prod: "https://indian-prediction-league.vercel.app/",
+  staging: "https://indian-prediction-league.vercel.app",
+  prod: "https://indian-prediction-league.vercel.app",
 };
 
 export const API_BASE_URL =

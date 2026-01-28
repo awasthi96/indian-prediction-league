@@ -5,206 +5,166 @@ import {
   TouchableOpacity,
   Modal,
   StyleSheet,
-  ScrollView,
+  SectionList,
+  Platform,
+  StatusBar
 } from "react-native";
 
-type Props = {
-  label?: Optional[string];
-  data: string[];
-  value: string | null;
-  onSelect: (value: string) => void;
+interface PlayerDropdownProps {
+  sections: { title: string; data: string[] }[]; // CHANGED: Now accepts sections
+  value: string;
+  onSelect: (val: string) => void;
   disabled?: boolean;
-};
+}
 
 export default function PlayerDropdown({
-  label,
-  data,
+  sections,
   value,
   onSelect,
   disabled = false,
-}: Props) {
-  const [modalVisible, setModalVisible] = useState(false);
+}: PlayerDropdownProps) {
+  const [visible, setVisible] = useState(false);
+
+  const handleSelect = (val: string) => {
+    onSelect(val);
+    setVisible(false);
+  };
 
   return (
-    <View style={styles.container}>
-      {/* Label */}
-      {label?(
-        <Text style={styles.label}>{label}</Text>
-      ): null}
-
-      {/* Dropdown Button */}
+    <View>
       <TouchableOpacity
-        style={[
-          styles.dropdownButton,
-          disabled && styles.dropdownButtonDisabled,
-        ]}
-        onPress={() => !disabled && setModalVisible(true)}
+        style={[styles.button, disabled && styles.disabled]}
+        onPress={() => setVisible(true)}
         disabled={disabled}
       >
-        <Text style={value ? styles.selectedText : styles.placeholderText}>
-          {value || "Select player"}
+        <Text style={value ? styles.textSelected : styles.textPlaceholder}>
+          {value || "Select Player"}
         </Text>
-        <Text style={styles.arrow}>▼</Text>
       </TouchableOpacity>
 
-      {/* Modal with options */}
       <Modal
-        visible={modalVisible}
+        visible={visible}
         transparent
-        animationType="fade"
-        onRequestClose={() => setModalVisible(false)}
+        animationType="slide"
+        onRequestClose={() => setVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{label}</Text>
-            
-            <ScrollView style={styles.scrollView}>
-              {data.length === 0 ? (
-                <Text style={styles.emptyText}>No players available</Text>
-              ) : (
-                data.map((player) => (
-                  <TouchableOpacity
-                    key={player}
-                    style={[
-                      styles.optionButton,
-                      value === player && styles.optionButtonActive,
-                    ]}
-                    onPress={() => {
-                      onSelect(player);
-                      setModalVisible(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.optionText,
-                        value === player && styles.optionTextActive,
-                      ]}
-                    >
-                      {player}
-                    </Text>
-                    {value === player && (
-                      <Text style={styles.checkmark}>✓</Text>
-                    )}
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>Select Player</Text>
+              <TouchableOpacity onPress={() => setVisible(false)}>
+                <Text style={styles.closeText}>Close</Text>
+              </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setModalVisible(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+            <SectionList
+              sections={sections}
+              keyExtractor={(item, index) => item + index}
+              renderSectionHeader={({ section: { title } }) => (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionHeaderText}>{title}</Text>
+                </View>
+              )}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.item, item === value && styles.itemSelected]}
+                  onPress={() => handleSelect(item)}
+                >
+                  <Text
+                    style={[
+                      styles.itemText,
+                      item === value && styles.itemTextSelected,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              stickySectionHeadersEnabled={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            />
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: 12,
-  },
-  label: {
-    fontSize: 13,
-    color: "#9ca3af",
-    marginBottom: 6,
-  },
-  dropdownButton: {
+  button: {
     backgroundColor: "#111827",
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    padding: 12,
     borderRadius: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     borderWidth: 1,
     borderColor: "#374151",
   },
-  dropdownButtonDisabled: {
+  disabled: {
     opacity: 0.5,
   },
-  selectedText: {
-    color: "#e5e7eb",
-    fontSize: 14,
-  },
-  placeholderText: {
-    color: "#6b7280",
-    fontSize: 14,
-  },
-  arrow: {
+  textPlaceholder: {
     color: "#9ca3af",
-    fontSize: 12,
+  },
+  textSelected: {
+    color: "#e5e7eb",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "flex-end",
   },
-  modalContent: {
+  modalContainer: {
     backgroundColor: "#1f2937",
-    borderRadius: 12,
-    padding: 16,
-    width: "100%",
-    maxHeight: "70%",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: "80%",
+    paddingTop: 16,
   },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#e5e7eb",
-    marginBottom: 12,
-  },
-  scrollView: {
-    maxHeight: 400,
-  },
-  optionButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 6,
-    backgroundColor: "#111827",
+  header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#374151",
   },
-  optionButtonActive: {
-    backgroundColor: "#2563eb",
-  },
-  optionText: {
-    color: "#e5e7eb",
-    fontSize: 14,
-  },
-  optionTextActive: {
-    color: "#ffffff",
+  headerTitle: {
+    color: "#f3f4f6",
+    fontSize: 16,
     fontWeight: "600",
   },
-  checkmark: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  emptyText: {
-    color: "#6b7280",
-    fontSize: 14,
-    textAlign: "center",
-    paddingVertical: 20,
-  },
-  cancelButton: {
-    marginTop: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  cancelButtonText: {
+  closeText: {
     color: "#60a5fa",
     fontSize: 14,
+  },
+  sectionHeader: {
+    backgroundColor: "#374151",
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    marginTop: 0,
+  },
+  sectionHeaderText: {
+    color: "#9ca3af",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  item: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#374151",
+  },
+  itemSelected: {
+    backgroundColor: "#1e3a8a",
+  },
+  itemText: {
+    color: "#d1d5db",
+    fontSize: 14,
+  },
+  itemTextSelected: {
+    color: "#ffffff",
     fontWeight: "600",
   },
 });

@@ -12,7 +12,7 @@ import {
   Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { apiRequest } from "@/api/api";
-import { saveToken } from '@/auth/token';
+import { setToken } from '@/auth/storage';
 
 
 export default function LoginScreen() {
@@ -32,7 +32,7 @@ export default function LoginScreen() {
         body: JSON.stringify({ username, password }),
       });
 
-      await saveToken(response.access_token);
+      await setToken(response.access_token);
       router.replace('/(tabs)');
     } catch (err) {
       setError(err.message || 'Login failed');

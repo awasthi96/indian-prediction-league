@@ -1,10 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-
 from database import get_db
 from models import User
-from auth.jwt import create_access_token
+from auth.jwt import create_access_token, get_current_user_id
 
 router = APIRouter()
 
@@ -33,3 +32,16 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/ping")
 def auth_ping():
     return {"message": "auth ok"}
+
+
+def get_current_user(
+    user_id: int = Depends(get_current_user_id), 
+    db: Session = Depends(get_db)
+):
+    """
+    Uses the ID from the token to find the actual User in the database.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user

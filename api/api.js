@@ -1,6 +1,6 @@
 // src/api/api.js
 import { API_BASE_URL } from '../config';
-import { getToken } from '../auth/token';
+import { getToken } from '../auth/storage';
 
 export const apiRequest = async (path, options = {}) => {
   const token = await getToken();
@@ -51,11 +51,11 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  getUpcomingMatches: () => apiRequest("/matches/matches?status=upcoming"),
+  getUpcomingMatches: () => apiRequest("/matches/matches?status=Upcoming"),
 
-  getCompletedMatches: () => apiRequest("/matches/matches?status=completed"),
+  getCompletedMatches: () => apiRequest("/matches/matches?status=Completed"),
 
-  getMatch: (matchId) => apiRequest(`/matches/${matchId}`),
+  getMatch: (matchId) => apiRequest(`/matches/matches/${matchId}`),
 
   getMatchPlayers: (matchId) => apiRequest(`/matches/${matchId}/players`),
 
@@ -78,6 +78,16 @@ export const api = {
     apiRequest(`/predictions/${matchId}`,{
       method: 'PUT',
       body: JSON.stringify(payload),
+    }),
+
+  // Check if token is valid
+  getMe: () => apiRequest("/users/me"),
+
+  // Register new user
+  register: (userData) => 
+    apiRequest("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(userData),
     }),
 
 };

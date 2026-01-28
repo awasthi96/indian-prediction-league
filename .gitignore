@@ -66,3 +66,6 @@ __pycache__/
 
 code/ipl-backend/auth/__pycache__/
 code/ipl-backend/routers/__pycache__/
+code/ipl-backend/Scripts/
+scripts/
+legacy/

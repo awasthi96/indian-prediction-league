@@ -1,50 +1,59 @@
-# data_loader.py
-import json
-from pathlib import Path
-from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
+from models import Match, Squad, Player, Team, PlayerRole
 
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-
-def _load_json(filename: str):
-    with open(DATA_DIR / filename, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-TEAMS: list[Dict[str, Any]] = _load_json("teams_players.json")
-
-# convenience maps
-TEAM_BY_ABBR = {t["abbr"]: t for t in TEAMS}
-TEAM_BY_FULLNAME = {t["full_name"].strip().lower(): t for t in TEAMS}
-
-def normalize_team_abbr(name: str) -> Optional[str]:
-    if not name:
-        return None
-    name = name.strip()
-    # if already abbr
-    if name in TEAM_BY_ABBR:
-        return name
-    # try fullname case-insensitive
-    t = TEAM_BY_FULLNAME.get(name.lower())
-    if t:
-        return t["abbr"]
-    # fallback: try to find substring match
-    for tt in TEAMS:
-        if tt["abbr"].lower() == name.lower():
-            return tt["abbr"]
-    return None
-
-def get_players_for_team_abbr(abbr: str) -> List[str]:
-    t = TEAM_BY_ABBR.get(abbr)
-    return t.get("players", []) if t else []
-
-def get_players_for_match(home_team_name: str, away_team_name: str) -> List[str]:
-    home = normalize_team_abbr(home_team_name)
-    away = normalize_team_abbr(away_team_name)
-    if not home and not away:
+def get_match_players_grouped(db: Session, match_id: int):
+    """
+    Fetches players for the specific match from the DB (Squads table).
+    Returns them grouped by Role for the frontend SectionList.
+    """
+    # 1. Get Match to find out which Tournament and Teams are involved
+    match = db.query(Match).filter(Match.id == match_id).first()
+    
+    # Safety check: If match doesn't exist or isn't linked to V2 Tournament yet
+    if not match or not match.tournament_id:
         return []
-    names = []
-    if home:
-        names.extend(get_players_for_team_abbr(home))
-    if away:
-        names.extend([p for p in get_players_for_team_abbr(away) if p not in names])
-    return names
+
+    # 2. Query Squads
+    # We want players who are in this Tournament AND belong to either Home or Away team
+    results = (
+        db.query(Player.name, Player.role)
+        .join(Squad, Squad.player_id == Player.id)
+        .filter(Squad.tournament_id == match.tournament_id)
+        .filter(Squad.team_id.in_([match.home_team_id, match.away_team_id]))
+        .all()
+    )
+
+    # 3. Group by Role in buckets
+    grouped = {
+        "WICKET_KEEPER": [],
+        "BATTER": [],
+        "ALL_ROUNDER": [],
+        "BOWLER": []
+    }
+
+    for name, role in results:
+        # Handle Enum value safely
+        r_key = str(role.value if hasattr(role, "value") else role)
+        if r_key in grouped:
+            grouped[r_key].append(name)
+
+    # 4. Format for Frontend SectionList (Ordered Logic)
+    # Order: WK -> Batter -> All Rounder -> Bowler
+    sections = []
+    labels = {
+        "WICKET_KEEPER": "Wicket Keepers",
+        "BATTER": "Batters",
+        "ALL_ROUNDER": "All Rounders",
+        "BOWLER": "Bowlers"
+    }
+    
+    order = ["WICKET_KEEPER", "BATTER", "ALL_ROUNDER", "BOWLER"]
+    
+    for key in order:
+        if grouped[key]:
+            sections.append({
+                "title": labels[key],
+                "data": sorted(grouped[key]) # Sort alphabetically inside the section
+            })
+            
+    return sections

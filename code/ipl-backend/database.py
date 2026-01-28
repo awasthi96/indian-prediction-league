@@ -3,7 +3,7 @@ Database configuration for FastAPI + SQLAlchemy
 Supports both PostgreSQL (production/local) and SQLite (testing)
 """
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 import os
 
@@ -11,27 +11,19 @@ import os
 # DATABASE CONFIGURATION
 # ============================================================================
 
+APP_ENV = os.getenv("APP_ENV", "local")
+
 # Option 1: Try to get DATABASE_URL from environment variable (for deployment)
-DATABASE_URL = "postgresql://postgres:rsQlVrnEaGcEEwyKpFqUNtqOTejywiiQ@switchback.proxy.rlwy.net:34063/railway"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Option 2: If no environment variable, use local PostgreSQL
 if not DATABASE_URL:
-    # REPLACE THESE WITH YOUR ACTUAL VALUES:
-    DB_USER = "ipl_app_user"  # or "ipl_app_user" if you got it working
-    DB_PASSWORD = "testing123"  # Your PostgreSQL password
-    DB_HOST = "localhost"
-    DB_PORT = "5432"
-    DB_NAME = "indian_prediction_league"
-    
-    # Build the connection string
-    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    
-    # If you want to use SQLite for testing instead, uncomment this:
-    # DATABASE_URL = "sqlite:///./test.db"
+    raise RuntimeError("DATABASE_URL not set")
 
-# Fix Railway's postgres:// to postgresql:// (if needed)
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+DB_SCHEMA = "ipl_prod" if APP_ENV == "prod" else "ipl_staging"
+
+if APP_ENV == "prod" and DB_SCHEMA != "ipl_prod":
+    raise RuntimeError("🚨 PROD cannot use non-prod schema")
 
 # ============================================================================
 # ENGINE SETUP
@@ -43,8 +35,19 @@ engine = create_engine(
     # SQLite needs this special setting for FastAPI's threading
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
     # Echo SQL queries to console (helpful for learning/debugging)
-    echo=False  # Set to False in production
+    echo=False,  # Set to False in production
+    execution_options={
+        "schema_translate_map": {"public": DB_SCHEMA}
+    }
 )
+
+@event.listens_for(engine,"checkout")
+def set_search_path(dbapi_connection, connection_record, connection_proxy):
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute(f"SET search_path TO {DB_SCHEMA}")
+    finally:
+        cursor.close()
 
 # ============================================================================
 # SESSION SETUP
@@ -69,16 +72,6 @@ Base = declarative_base()
 # ============================================================================
 
 def get_db():
-    """
-    FastAPI dependency that provides a database session.
-    
-    Usage in routes:
-        @app.get("/users/")
-        def get_users(db: Session = Depends(get_db)):
-            return db.query(User).all()
-    
-    The session is automatically closed after the request.
-    """
     db = SessionLocal()
     try:
         yield db  # Give the session to the route
@@ -91,20 +84,22 @@ def get_db():
 # ============================================================================
 
 def init_db():
-    """
-    Create all tables in the database.
-    Call this once when setting up your app for the first time.
-    
-    Usage:
-        from database import init_db
-        init_db()
-    """
-    # Import all models here so they're registered with Base
-    from models import User, Match, Prediction, PredictedXFactor, ActualXFactor, XFactorDef
+    # 1. Determine which schema to use (default to ipl_staging if not set)
+    schema = os.getenv("DB_SCHEMA", "ipl_staging")
+    print(f"🛠️  Initializing database in schema: {schema}")
 
-    # Create all tables
+    with engine.connect() as connection:
+        # 2. Create the schema if it doesn't exist
+        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+        # 3. Set the search path to that schema
+        # This tells SQLAlchemy: "Create all tables INSIDE this schema, not public"
+        connection.execute(text(f"SET search_path TO {schema}"))
+        connection.commit()
+
+    # 4. Create all tables in the active schema
+    print("🚀 Creating tables...")
     Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created successfully!")
+    print("✅ Tables created successfully!")
 
 
 def drop_all_tables():
@@ -116,8 +111,6 @@ def drop_all_tables():
     print("⚠️ All tables dropped!")
 
 
-
-Base.metadata.create_all(bind=engine)
 # ============================================================================
 # USAGE EXAMPLES
 # ============================================================================

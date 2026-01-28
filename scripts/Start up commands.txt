@@ -1,0 +1,10 @@
+Start up commands
+Backend: C:\Users\DELL\indian-prediction-league\code\ipl-backend
+	virtual environment- venv\Scripts\activate
+	set JWT_SECRET=supersecretkey123
+	set APP_ENV=local
+	set DATABASE_URL=postgresql+psycopg://neondb_owner:npg_vDCK9RHlIpg2@ep-green-bar-a17zf4yz-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+	uvicorn main:app --reload --host 0.0.0.0
+
+Frontend: C:\Users\DELL\indian-prediction-league
+	npx expo start

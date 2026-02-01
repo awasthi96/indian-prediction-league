@@ -36,9 +36,6 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
     # Echo SQL queries to console (helpful for learning/debugging)
     echo=False,  # Set to False in production
-    execution_options={
-        "schema_translate_map": {"public": DB_SCHEMA}
-    }
 )
 
 @event.listens_for(engine,"checkout")
@@ -85,7 +82,8 @@ def get_db():
 
 def init_db():
     # 1. Determine which schema to use (default to ipl_staging if not set)
-    schema = os.getenv("DB_SCHEMA", "ipl_staging")
+    schema = DB_SCHEMA
+    print(f"App Environment = {APP_ENV}")
     print(f"🛠️  Initializing database in schema: {schema}")
 
     with engine.connect() as connection:

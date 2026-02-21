@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
-from models import Match, Prediction, ActualXFactor
+from models import Match, Prediction, ActualXFactor, Team
 from database import get_db
 from scoring import apply_scoring_for_match
 from data_loader import get_match_players_grouped
@@ -61,7 +61,11 @@ class MatchResponse(BaseModel):
     actual_highest_run_scored: Optional[int] = None
     actual_powerplay_runs: Optional[int] = None
     actual_total_wickets: Optional[int] = None
-    actual_x_factors: List[ActualXFactorResponse] = []
+    actual_x_factors: List[ActualXFactorResponse] = Field(default_factory=list)
+    home_team_short_name: Optional[str] = None
+    home_team_logo_url: Optional[str] = None
+    away_team_short_name: Optional[str] = None
+    away_team_logo_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -71,16 +75,23 @@ class MatchResponse(BaseModel):
 
 @router.get("/admin/matches", response_model=List[MatchResponse])
 def admin_list_matches(db: Session = Depends(get_db)):
-    matches = db.query(Match).all()
+    matches = db.query(Match).options(
+        joinedload(Match.home_team_ref),
+        joinedload(Match.away_team_ref),
+    ).all()
     return matches
 
 
 @router.post("/admin/matches", response_model=MatchResponse)
 def admin_create_match(data: MatchCreate, db: Session = Depends(get_db)):
-    # Create new match
+    home_team = db.query(Team).filter(Team.name == data.home_team).first()
+    away_team = db.query(Team).filter(Team.name == data.away_team).first()
+
     new_match = Match(
         home_team=data.home_team,
         away_team=data.away_team,
+        home_team_id=home_team.id if home_team else None,
+        away_team_id=away_team.id if away_team else None,
         venue=data.venue,
         start_time=data.start_time,
         status="upcoming",
@@ -114,7 +125,9 @@ def admin_set_match_result(
     match.actual_total_wickets = data.total_wickets
 
     # 3. Delete old X-factors (if re-submitting results)
-    db.query(ActualXFactor).filter(ActualXFactor.match_id == match_id).delete()
+    db.query(ActualXFactor)\
+        .filter(ActualXFactor.match_id == match_id)\
+        .delete(synchronize_session=False)
 
     # 4. Store all actual X-factor hits
     for xf_hit in data.x_factor_hits:
@@ -144,18 +157,24 @@ def admin_set_match_result(
 
 # -------- User endpoints --------
 
-@router.get("/matches", response_model=List[MatchResponse])
+@router.get("/list", response_model=List[MatchResponse])
 def list_matches(status: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(Match)
-    
+    query = db.query(Match).options(
+        joinedload(Match.home_team_ref),
+        joinedload(Match.away_team_ref),
+    )
+
     if status:
         query = query.filter(Match.status == status)
-    
+
     matches = query.all()
+
+    if not matches:
+        return []
 
     match_ids = [m.id for m in matches]
 
-    actual_xfs =(
+    actual_xfs = (
         db.query(ActualXFactor)
         .filter(ActualXFactor.match_id.in_(match_ids))
         .all()
@@ -164,27 +183,69 @@ def list_matches(status: Optional[str] = None, db: Session = Depends(get_db)):
     xfs_by_match = {}
 
     for xf in actual_xfs:
-        xfs_by_match.setdefault(xf.match_id,[]).append(xf)
+        xfs_by_match.setdefault(xf.match_id, []).append(xf)
 
-    for m in matches:
-        m.actual_x_factors = xfs_by_match.get(m.id, [])
-    
-    return matches
+    return [
+        {
+            "id": m.id,
+            "home_team": m.home_team,
+            "away_team": m.away_team,
+            "venue": m.venue,
+            "start_time": m.start_time,
+            "status": m.status,
+
+            "home_team_short_name": m.home_team_ref.short_name if m.home_team_ref else None,
+            "home_team_logo_url": m.home_team_ref.logo_url if m.home_team_ref else None,
+            "away_team_short_name": m.away_team_ref.short_name if m.away_team_ref else None,
+            "away_team_logo_url": m.away_team_ref.logo_url if m.away_team_ref else None,
+
+            "actual_toss_winner": m.actual_toss_winner,
+            "actual_match_winner": m.actual_match_winner,
+            "actual_top_wicket_taker": m.actual_top_wicket_taker,
+            "actual_top_run_scorer": m.actual_top_run_scorer,
+            "actual_highest_run_scored": m.actual_highest_run_scored,
+            "actual_powerplay_runs": m.actual_powerplay_runs,
+            "actual_total_wickets": m.actual_total_wickets,
+            "actual_x_factors": xfs_by_match.get(m.id, []),
+        }
+        for m in matches
+    ]
 
 
-@router.get("/matches/{match_id}", response_model=MatchResponse)
+
+
+@router.get("/{match_id}", response_model=MatchResponse)
 def get_match(match_id: int, db: Session = Depends(get_db)):
-    match = db.query(Match).filter(Match.id == match_id).first()
+    match = db.query(Match).options(
+        joinedload(Match.home_team_ref),
+        joinedload(Match.away_team_ref),
+        joinedload(Match.actual_x_factors),
+    ).filter(Match.id == match_id).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    actual_xfs =(
-        db.query(ActualXFactor)
-        .filter(ActualXFactor.match_id == match_id)
-        .all()
-    )
-    match.actual_x_factors = actual_xfs
-    return match
+    return {
+        "id": match.id,
+        "home_team": match.home_team,
+        "away_team": match.away_team,
+        "venue": match.venue,
+        "start_time": match.start_time,
+        "status": match.status,
+
+        "home_team_short_name": match.home_team_ref.short_name if match.home_team_ref else None,
+        "home_team_logo_url": match.home_team_ref.logo_url if match.home_team_ref else None,
+        "away_team_short_name": match.away_team_ref.short_name if match.away_team_ref else None,
+        "away_team_logo_url": match.away_team_ref.logo_url if match.away_team_ref else None,
+
+        "actual_toss_winner": match.actual_toss_winner,
+        "actual_match_winner": match.actual_match_winner,
+        "actual_top_wicket_taker": match.actual_top_wicket_taker,
+        "actual_top_run_scorer": match.actual_top_run_scorer,
+        "actual_highest_run_scored": match.actual_highest_run_scored,
+        "actual_powerplay_runs": match.actual_powerplay_runs,
+        "actual_total_wickets": match.actual_total_wickets,
+        "actual_x_factors": match.actual_x_factors,
+    }
 
 
 @router.get("/{match_id}/players", response_model=List[dict]) 
@@ -197,30 +258,3 @@ def get_match_players(match_id: int, db: Session = Depends(get_db)):
         return []
         
     return players_sections
-
-
-@router.get("/", response_model=List[dict])
-def list_matches_with_players(status: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(Match)
-    
-    if status:
-        query = query.filter(Match.status == status)
-    
-    matches = query.all()
-    
-    # Convert matches to dicts and add players
-    out = []
-    for m in matches:
-        m_dict = {
-            "id": m.id,
-            "home_team": m.home_team,
-            "away_team": m.away_team,
-            "venue": m.venue,
-            "start_time": m.start_time,
-            "status": m.status,
-        }
-        # Attach players
-        m_dict["players"] = get_players_for_match(m.home_team, m.away_team)
-        out.append(m_dict)
-    
-    return out

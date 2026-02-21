@@ -2,7 +2,7 @@
 SQLAlchemy Models for IPL Prediction App
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Enum, Index
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -152,6 +152,12 @@ class Match(Base):
     predictions = relationship("Prediction", back_populates="match", cascade="all, delete-orphan")
     actual_x_factors = relationship("ActualXFactor", back_populates="match", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        Index("idx_matches_status", "status"),
+        Index("idx_matches_home_team_id", "home_team_id"),
+        Index("idx_matches_away_team_id", "away_team_id"),
+    )
+
 
 # ============================================================================
 # MODEL 3: Prediction (Unchanged for now)
@@ -178,6 +184,10 @@ class Prediction(Base):
     user = relationship("User", back_populates="predictions")
     match = relationship("Match", back_populates="predictions")
     x_factors = relationship("PredictedXFactor", back_populates="prediction", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_predictions_match_id", "match_id"),
+    )
 
 
 # ============================================================================
@@ -209,6 +219,10 @@ class ActualXFactor(Base):
     player_name = Column(String(100), nullable=False)
     
     match = relationship("Match", back_populates="actual_x_factors")
+
+    __table_args__ = (
+        Index("idx_actual_xf_match_id", "match_id"),
+    )
 
 
 # ============================================================================

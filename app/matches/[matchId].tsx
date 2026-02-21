@@ -16,6 +16,7 @@ import {
   Platform,
   SectionList,
   KeyboardAvoidingView,
+  Image,
 } from "react-native";
 import PlayerDropdown from "@/components/PlayerDropdown";
 import TeamDropdown from "@/components/TeamDropdown";
@@ -276,15 +277,55 @@ export default function MatchPredictionScreen() {
 
             <View style={styles.bannerContainer}>
               <View style={styles.bannerRow}>
-                <Text style={styles.bannerTeam}>{match.home_team}</Text>
+
+                {/* LEFT TEAM */}
+                <View style={styles.teamBlockLeft}>
+                  {match.home_team_logo_url ? (
+                    <Image
+                      source={{ uri: match.home_team_logo_url }}
+                      style={styles.bannerLogo}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <View style={styles.bannerLogoPlaceholder} />
+                  )}
+                  <Text style={styles.bannerTeamText}>
+                    {match.home_team_short_name || match.home_team}
+                  </Text>
+                </View>
+
+                {/* CENTER */}
                 <View style={styles.bannerCenter}>
                   <Text style={styles.vsText}>VS</Text>
                   <Text style={styles.venueBanner}>{match.venue}</Text>
                 </View>
-                <Text style={styles.bannerTeam}>{match.away_team}</Text>
-              </View>
+
+                {/* RIGHT TEAM */}
+                <View style={styles.teamBlockRight}>
+                  <Text style={styles.bannerTeamText}>
+                    {match.away_team_short_name || match.away_team}
+                  </Text>
+                  {match.away_team_logo_url ? (
+                    <Image
+                      source={{ uri: match.away_team_logo_url }}
+                      style={styles.bannerLogo}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <View style={styles.bannerLogoPlaceholder} />
+                  )}
+                </View>
+              </View>  
               <View style={styles.bannerFooter}>
-                <Text style={styles.footerText}>{new Date(match.start_time).toLocaleString()}</Text>
+                <Text style={styles.footerText}>
+                  {new Date(match.start_time).toLocaleDateString([], {
+                    day: "numeric",
+                    month: "short",
+                  })} • {new Date(match.start_time).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </Text>
                 <Text style={styles.footerText}>Status: {match.status}</Text>
               </View>
             </View>
@@ -734,11 +775,12 @@ const styles = StyleSheet.create({
   },
   bannerCenter: {
     alignItems: 'center',
-    flex: 0.5,
+    justifyContent: "center",
+    paddingHorizontal: 10,
   },
   vsText: {
     color: '#3b82f6',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
   },
   venueBanner: {
@@ -787,5 +829,36 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: "#94a3b8",
     fontWeight: '700',
+  },
+  bannerLogo: {
+    width: 52,
+    height: 52,
+    marginBottom: 6,
+  },
+  bannerLogoPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: "#334155",
+    marginBottom: 6,
+  },
+  teamBlockLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 10,
+  },
+  teamBlockRight: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  bannerTeamText: {
+    color: "#f8fafc",
+    fontSize: 20,
+    fontWeight: "800",
   },
 });

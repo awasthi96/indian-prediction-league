@@ -51,11 +51,11 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
 
-  getUpcomingMatches: () => apiRequest("/matches/matches?status=Upcoming"),
+  getUpcomingMatches: () => apiRequest("/matches/list?status=Upcoming"),
 
-  getCompletedMatches: () => apiRequest("/matches/matches?status=Completed"),
+  getCompletedMatches: () => apiRequest("/matches/list?status=Completed"),
 
-  getMatch: (matchId) => apiRequest(`/matches/matches/${matchId}`),
+  getMatch: (matchId) => apiRequest(`/matches/${matchId}`),
 
   getMatchPlayers: (matchId) => apiRequest(`/matches/${matchId}/players`),
 

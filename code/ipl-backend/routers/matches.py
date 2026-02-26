@@ -139,7 +139,7 @@ def admin_set_match_result(
         db.add(actual_xf)
 
     # 5. Mark match as completed
-    match.status = "completed"
+    match.status = "Completed"
 
     # 6. Commit all changes to database
     db.commit()

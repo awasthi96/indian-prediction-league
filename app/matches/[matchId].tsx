@@ -105,9 +105,9 @@ export default function MatchPredictionScreen() {
   const [scoringMeta, setScoringMeta] = useState<ScoringMeta | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
 
-  const showActuals = match?.status === "completed";
+  const showActuals = match?.status === "Completed";
   const actualXFactors = match?.actual_x_factors || [];
-  const isCompleted = match?.status === "completed";
+  const isCompleted = match?.status === "Completed";
   const hasPrediction = !!myPrediction;
   const showForm = !isCompleted && (!hasPrediction || isEditMode);
 

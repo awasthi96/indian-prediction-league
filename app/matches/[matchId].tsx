@@ -345,7 +345,7 @@ export default function MatchPredictionScreen() {
                   <PredictionResultRow label="Match winner" predicted={hasPrediction ? myPrediction.match_winner : "-"} actual={match?.actual_match_winner ?? "-"} showActuals={showActuals} />
                   <View style={styles.resultRow}>
                     <View style={styles.resultLeft}><Text style={styles.label}>Top wicket taker</Text><Text style={styles.readonlyValue}>You: {hasPrediction ? myPrediction.top_wicket_taker : "-"}</Text></View>
-                    {showActuals && <View style={styles.resultRight}><Text style={styles.label}>Result</Text>{(match?.actual_top_wicket_taker || "").split(",").map((n: string, i: number) => <Text key={i} style={styles.readonlyValue}>{n.trim()}</Text>)}</View>}
+                    {showActuals && <View style={styles.resultRight}><Text style={styles.resultRight}>Result:</Text>{(match?.actual_top_wicket_taker || "").split(",").map((n: string, i: number) => <Text key={i} style={styles.readonlyValue}>{n.trim()}</Text>)}</View>}
                   </View>
                   <PredictionResultRow label="Top run scorer" predicted={hasPrediction ? myPrediction.top_run_scorer : "-"} actual={match?.actual_top_run_scorer ?? "-"} showActuals={showActuals} />
                   <PredictionResultRow label="Highest run total" predicted={hasPrediction ? myPrediction.highest_run_scored : "-"} actual={match?.actual_highest_run_scored ?? "-"} showActuals={showActuals} />

@@ -173,11 +173,11 @@ class Prediction(Base):
     # but strictly speaking, IDs are better. Keeping Strings for V1 compatibility.
     toss_winner = Column(String(50), nullable=False)
     match_winner = Column(String(50), nullable=False)
-    top_wicket_taker = Column(String(100), nullable=False)
-    top_run_scorer = Column(String(100), nullable=False)
-    highest_run_scored = Column(Integer, nullable=False)
-    powerplay_runs = Column(Integer, nullable=False)
-    total_wickets = Column(Integer, nullable=False)
+    top_wicket_taker = Column(String(100), nullable=True)
+    top_run_scorer = Column(String(100), nullable=True)
+    highest_run_scored = Column(Integer, nullable=True)
+    powerplay_runs = Column(Integer, nullable=True)
+    total_wickets = Column(Integer, nullable=True)
     
     points_earned = Column(Integer, nullable=True, default=None)
     

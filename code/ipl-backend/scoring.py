@@ -90,7 +90,10 @@ def score_prediction_for_match(
     # ---- Numeric predictions with range-based scoring ----
 
     # Highest runs scored
-    if match.actual_highest_run_scored is not None:
+    if (
+        match.actual_highest_run_scored is not None
+        and prediction.highest_run_scored is not None
+    ):
         diff = abs(match.actual_highest_run_scored - prediction.highest_run_scored)
         if diff <= 5:
             points += 5
@@ -101,7 +104,10 @@ def score_prediction_for_match(
         # else: +0
 
     # Powerplay runs
-    if match.actual_powerplay_runs is not None:
+    if (
+        match.actual_powerplay_runs is not None
+        and prediction.powerplay_runs is not None
+    ):
         diff = abs(match.actual_powerplay_runs - prediction.powerplay_runs)
         if diff <= 1:
             points += 3
@@ -112,7 +118,10 @@ def score_prediction_for_match(
         # else: +0
 
     # Total wickets
-    if match.actual_total_wickets is not None:
+    if (
+        match.actual_total_wickets is not None
+        and prediction.total_wickets is not None
+    ):
         diff = abs(match.actual_total_wickets - prediction.total_wickets)
         if diff == 0:
             points += 3

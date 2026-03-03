@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
-
+from services.result_engine import generate_match_result
+from services.icc_client import fetch_full_match, fetch_match_data
+from services.scorecard_aggregator import aggregate_scorecard
+from services.xf_engine import generate_xfs
 from models import Match, Prediction, ActualXFactor, Team
 from database import get_db
 from scoring import apply_scoring_for_match
@@ -167,6 +170,16 @@ def list_matches(status: Optional[str] = None, db: Session = Depends(get_db)):
     if status:
         query = query.filter(Match.status == status)
 
+        if status == "completed":
+            query = query.order_by(Match.start_time.desc())
+        else:
+            # upcoming / live
+            query = query.order_by(Match.start_time.asc())
+
+    else:
+        # Default behavior when no status filter provided
+        query = query.order_by(Match.start_time.asc())
+
     matches = query.all()
 
     if not matches:
@@ -258,3 +271,23 @@ def get_match_players(match_id: int, db: Session = Depends(get_db)):
         return []
         
     return players_sections
+
+
+@router.get("/{game_id}/result")
+async def get_result(game_id: int):
+    return await generate_match_result(game_id)
+
+
+@router.get("/{game_id}/debug")
+async def debug_match(game_id: int):
+    scorecard = await fetch_match_data(game_id)
+
+    stats = aggregate_scorecard(scorecard)
+
+    scorecard_xfs = generate_xfs(stats)
+
+    return {
+        "scorecard": scorecard, 
+        "aggregate": stats,
+        "scorecard_xfs": scorecard_xfs
+    }

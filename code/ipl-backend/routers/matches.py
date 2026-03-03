@@ -170,7 +170,7 @@ def list_matches(status: Optional[str] = None, db: Session = Depends(get_db)):
     if status:
         query = query.filter(Match.status == status)
 
-        if status == "completed":
+        if status == "Completed":
             query = query.order_by(Match.start_time.desc())
         else:
             # upcoming / live

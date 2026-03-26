@@ -106,6 +106,20 @@ def load_default_xfactors():
             description="economy <=8",
             status=True,
         ),
+        "XF_BOWL_7_DOTS": XFactorDef(
+            id="XF_BOWL_7_DOTS",
+            risk="LOW",
+            category="bowling",
+            description="Bowled >= 7 dot balls",
+            status=True,
+        ),
+        "XF_BOWL_12_DOTS": XFactorDef(
+            id="XF_BOWL_12_DOTS",
+            risk="HIGH",
+            category="bowling",
+            description="Bowled >= 12 dot balls",
+            status=True,
+        ),
     }
 
 # Call this once at startup (e.g., from main.py)

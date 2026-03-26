@@ -13,15 +13,19 @@ import {
 import { api } from "@/api/api";
 
 export default function LeaderboardScreen() {
-  type LeaderboardRow = {
-  rank: number;
-  user_id: number;
-  username: string;
-  total_points: number;
-  matches_played: number;
-};
+  type Leader = {
+    rank: number;
+    username: string;
+    points: number;
+  };
 
-const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
+  type TournamentLeaderboard = {
+    tournament_id: number;
+    tournament_name: string;
+    leaders: Leader[];
+  };
+
+  const [tournaments, setTournaments] = useState<TournamentLeaderboard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -29,9 +33,9 @@ const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
     setLoading(true);
     setError("");
     try {
-      const data = await api.getOverallLeaderboard();
+      const data = await api.getTournamentLeaderboards();
       console.log("LEADERBOARD DATA:", data); // debug in Expo logs
-      setLeaderboard(data);
+      setTournaments(data.tournaments);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -55,23 +59,36 @@ const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <FlatList
-          data={leaderboard}
-          keyExtractor={(item) => item.user_id.toString()}
+          data={tournaments}
+          keyExtractor={(item) => item.tournament_id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.leaderRow}>
-              <Text style={styles.leaderRank}>#{item.rank}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.leaderName}>{item.username}</Text>
-                <Text style={styles.leaderSub}>
-                  Points: {item.total_points} · Matches:{" "}
-                  {item.matches_played}
-                </Text>
-              </View>
+            <View style={styles.tournamentCard}>
+              
+              <Text style={styles.tournamentTitle}>
+                {item.tournament_name}
+              </Text>
+
+              {item.leaders.map((leader) => (
+                <View key={leader.rank} style={styles.leaderRow}>
+                  <Text style={styles.leaderRank}>
+                    {leader.rank === 1 ? "🥇" : leader.rank === 2 ? "🥈" : "🥉"}
+                  </Text>
+
+                  <Text style={styles.leaderName}>
+                    {leader.username}
+                  </Text>
+
+                  <Text style={styles.leaderPoints}>
+                    {leader.points} pts
+                  </Text>
+                </View>
+              ))}
+
             </View>
           )}
           ListEmptyComponent={
             !loading && !error ? (
-              <Text style={styles.emptyText}>No data yet.</Text>
+              <Text style={styles.emptyText}>No tournaments yet.</Text>
             ) : null
           }
         />
@@ -127,8 +144,23 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#e5e7eb",
   },
-  leaderSub: {
-    fontSize: 12,
-    color: "#9ca3af",
+  tournamentCard: {
+    backgroundColor: "#1e293b",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  tournamentTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#e5e7eb",
+    marginBottom: 10,
+  },
+  leaderPoints: {
+    fontSize: 13,
+    color: "#93c5fd",
+    marginLeft: "auto",
   },
 });

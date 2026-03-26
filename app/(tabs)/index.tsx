@@ -257,17 +257,16 @@ export default function App() {
                 >
                   <View style={styles.teamsRow}>
 
-                    {isToday && (
-                      match.home_team_logo_url ? (
-                        <Image
-                          source={{ uri: match.home_team_logo_url }}
-                          style={styles.logo}
-                          resizeMode="contain"
-                        />
-                      ) : (
-                        <View style={styles.logoPlaceholder} />
-                      )
-                    )}
+                    {match.home_team_logo_url ? (
+                      <Image
+                        source={{ uri: match.home_team_logo_url }}
+                        style={styles.logo}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={styles.logoPlaceholder} />
+                    )
+                    }
 
                     <Text style={[
                       styles.teamText,
@@ -285,17 +284,16 @@ export default function App() {
                       {match.away_team_short_name || match.away_team}
                     </Text>
 
-                    {isToday && (
-                      match.home_team_logo_url ? (
-                        <Image
-                          source={{ uri: match.away_team_logo_url }}
-                          style={styles.logo}
-                          resizeMode="contain"
-                        />
-                      ) : (
-                        <View style={styles.logoPlaceholder} />
-                      )
-                    )}
+                    {match.away_team_logo_url ? (
+                      <Image
+                        source={{ uri: match.away_team_logo_url }}
+                        style={styles.logo}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={styles.logoPlaceholder} />
+                    )
+                    }
                   </View>
 
                   <Text style={styles.timeText}>

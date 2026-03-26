@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import List, Dict
-
-from models import User, Prediction, Match
+from sqlalchemy import func, desc
+from models import User, Prediction, Match, Tournament
 from database import get_db
 from pydantic import BaseModel
 
@@ -32,6 +32,22 @@ class MatchLeaderboardEntry(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TournamentLeader(BaseModel):
+    rank: int
+    username: str
+    points: int
+
+
+class TournamentLeaderboard(BaseModel):
+    tournament_id: int
+    tournament_name: str
+    leaders: List[TournamentLeader]
+
+
+class TournamentLeaderboardResponse(BaseModel):
+    tournaments: List[TournamentLeaderboard]
 
 
 def build_user_index(db: Session) -> Dict[int, str]:
@@ -123,3 +139,76 @@ def get_match_leaderboard(match_id: int, db: Session = Depends(get_db)):
         current_rank += 1
 
     return entries
+
+
+@router.get("/tournaments", response_model=TournamentLeaderboardResponse)
+def get_tournament_leaderboards(db: Session = Depends(get_db)):
+
+    # Aggregate points per user per tournament
+    rows = (
+        db.query(
+            Match.tournament_id,
+            Tournament.name,
+            Prediction.user_id,
+            User.username,
+            func.sum(Prediction.points_earned).label("points"),
+        )
+        .join(Match, Prediction.match_id == Match.id)
+        .join(Tournament, Match.tournament_id == Tournament.id)
+        .join(User, Prediction.user_id == User.id)
+        .filter(Prediction.points_earned.isnot(None))
+        .group_by(Match.tournament_id, Tournament.name, Prediction.user_id, User.username)
+        .all()
+    )
+
+    # Organize rows per tournament
+    tournaments: Dict[int, Dict] = {}
+
+    for r in rows:
+        tid = r.tournament_id
+
+        if tid not in tournaments:
+            tournaments[tid] = {
+                "tournament_id": tid,
+                "tournament_name": r.name,
+                "leaders": [],
+            }
+
+        tournaments[tid]["leaders"].append(
+            {
+                "username": r.username,
+                "points": r.points,
+            }
+        )
+
+    # Sort leaders and keep top 3
+    for t in tournaments.values():
+
+        t["leaders"].sort(
+            key=lambda x: (-x["points"], x["username"].lower())
+        )
+
+        top3 = t["leaders"][:3]
+
+        ranked = []
+        rank = 1
+        for p in top3:
+            ranked.append(
+                TournamentLeader(
+                    rank=rank,
+                    username=p["username"],
+                    points=p["points"],
+                )
+            )
+            rank += 1
+
+        t["leaders"] = ranked
+
+    # Sort tournaments by id DESC
+    sorted_tournaments = sorted(
+        tournaments.values(),
+        key=lambda x: x["tournament_id"],
+        reverse=True,
+    )
+
+    return {"tournaments": sorted_tournaments}
